@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"log"
 	"mime"
 	"net/http"
@@ -19,27 +20,19 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-// local site folder
+// local site folder default value
 var siteFolder string = "./site"
-var watcher *fsnotify.Watcher
 
-// websocket endpoint on server
+// websocket endpoint on server default value
 var wsAPIURL string = "rws"
 
-// JS payload with websocket client
-var jsws string = `<script>var socket = new WebSocket("ws://localhost:3000/rws");
+// server port default value
+var port string = "3000"
 
-socket.onopen = function () {
-    console.log("Status: Connected\n");
-};
+var jsws string
 
-socket.onmessage = async function (e) {
-	console.log("Received: " + e.data + "\n");
-	await new Promise(r => setTimeout(r, 100));
-	location.reload();
-};
-</script>
-</head>`
+// system file watcher
+var watcher *fsnotify.Watcher
 
 func httpHandler(w http.ResponseWriter, req *http.Request) {
 	// build file path
@@ -119,6 +112,34 @@ func watchDir(path string, fi os.FileInfo, err error) error {
 }
 
 func main() {
+
+	if len(os.Getenv("SITE_FOLDER")) > 0 {
+		siteFolder = os.Getenv("SITE_FOLDER")
+	}
+
+	if len(os.Getenv("WS_API_URL")) > 0 {
+		wsAPIURL = os.Getenv("WS_API_URL")
+	}
+
+	if len(os.Getenv("SERVER_PORT")) > 0 {
+		port = os.Getenv("SERVER_PORT")
+	}
+
+	// JS payload with websocket client
+	jsws = fmt.Sprintf(`<script>var socket = new WebSocket("ws://localhost:%s/%s");
+
+	socket.onopen = function () {
+		console.log("Status: Connected\n");
+	};
+
+	socket.onmessage = async function (e) {
+		console.log("Received: " + e.data + "\n");
+		await new Promise(r => setTimeout(r, 100));
+		location.reload();
+	};
+	</script>
+	</head>`, port, wsAPIURL)
+
 	// creates a new file watcher
 	watcher, _ = fsnotify.NewWatcher()
 	defer watcher.Close()
@@ -134,8 +155,9 @@ func main() {
 	// custom handler for websocket
 	http.HandleFunc("/"+wsAPIURL, wsHandler)
 
-	log.Println("Listening on :3000...")
-	err := http.ListenAndServe(":3000", nil)
+	log.Println("Setting site folder :", siteFolder)
+	log.Println("Server listening on :", port)
+	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
